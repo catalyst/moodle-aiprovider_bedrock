@@ -16,6 +16,8 @@ This provider requires Moodle LMS 4.5, the first version to include the AI subsy
 
 You must provide an AWS Access Key and Secret Access Key for an AWS user with the proper permissions to use Amazon Bedrock in your AWS account. Please remind to enable the models from *Bedrock configurations > Model access* in the selected region.
 
+Alternatively, if Moodle is running on AWS infrastructure with an attached IAM role that grants Bedrock access, enable the **Use AWS default credential provider chain** setting. This hides the Access Key ID/Secret Access Key fields and makes the plugin rely on the AWS SDK's default credential resolution instead.
+
 You need to provide the AWS region and the [models](https://docs.aws.amazon.com/bedrock/latest/userguide/models-supported.html) to use for every specific Action.
 
 ![main settings](https://github.com/user-attachments/assets/7de1082f-ad7d-405f-a4c7-da30d206b1fe)
