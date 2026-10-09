@@ -39,17 +39,23 @@ abstract class abstract_processor extends process_base {
      */
     protected function get_bedrock_client(): BedrockRuntimeClient {
         $region = get_config('aiprovider_bedrock', 'region');
+        $usedefaultcredentialchain = get_config('aiprovider_bedrock', 'usedefaultcredentialchain');
         $accesskey = get_config('aiprovider_bedrock', 'accesskeyid');
         $secretkey = get_config('aiprovider_bedrock', 'secretaccesskey');
 
-        return new BedrockRuntimeClient([
+        $config = [
             'version' => 'latest',
             'region' => $region,
-            'credentials' => [
+        ];
+
+        if (!$usedefaultcredentialchain) {
+            $config['credentials'] = [
                 'key' => $accesskey,
                 'secret' => $secretkey,
-            ],
-        ]);
+            ];
+        }
+
+        return new BedrockRuntimeClient($config);
     }
 
     /**
