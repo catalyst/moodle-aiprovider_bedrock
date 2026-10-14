@@ -17,6 +17,7 @@
 namespace aiprovider_bedrock;
 
 use Aws\BedrockRuntime\BedrockRuntimeClient;
+use Aws\Exception\AwsException;
 use core\http_client;
 use core_ai\aiactions\responses\response_base;
 use core_ai\process_base;
@@ -104,12 +105,29 @@ abstract class abstract_processor extends process_base {
             $model = $this->get_model();
             $params = $this->create_request_params($userid);
 
-            $result = $client->invokeModel([
-                'modelId' => $model,
-                'body' => json_encode($params),
-                'contentType' => 'application/json',
-                'accept' => 'application/json',
-            ]);
+            try {
+                $result = $client->invokeModel([
+                    'modelId' => $model,
+                    'body' => json_encode($params),
+                    'contentType' => 'application/json',
+                    'accept' => 'application/json',
+                ]);
+            } catch (AwsException $e) {
+                // Some models deprecate parameters (e.g. 'temperature') that older models accept.
+                // If that is the cause, strip the offending parameter and retry once.
+                $unsupportedparam = $this->get_unsupported_param_from_error($e, $params);
+                if ($unsupportedparam === null) {
+                    throw $e;
+                }
+
+                unset($params[$unsupportedparam]);
+                $result = $client->invokeModel([
+                    'modelId' => $model,
+                    'body' => json_encode($params),
+                    'contentType' => 'application/json',
+                    'accept' => 'application/json',
+                ]);
+            }
 
             $response = json_decode($result->get('body')->getContents(), true);
             return $this->handle_api_success($response);
@@ -121,6 +139,22 @@ abstract class abstract_processor extends process_base {
                 'errormessage' => $e->getMessage(),
             ];
         }
+    }
+
+    /**
+     * Check whether an AWS exception is reporting a deprecated/unsupported request parameter.
+     *
+     * @param AwsException $e The exception thrown by the Bedrock client.
+     * @param array $params The request parameters that were sent.
+     * @return string|null The name of the offending parameter if found and present in $params, else null.
+     */
+    private function get_unsupported_param_from_error(AwsException $e, array $params): ?string {
+        $message = $e->getAwsErrorMessage() ?? $e->getMessage();
+        if (preg_match('/`?([a-zA-Z_]+)`? is deprecated for this model/', $message, $matches)
+                && array_key_exists($matches[1], $params)) {
+            return $matches[1];
+        }
+        return null;
     }
 
     /**
