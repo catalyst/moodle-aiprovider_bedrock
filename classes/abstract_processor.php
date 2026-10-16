@@ -132,13 +132,46 @@ abstract class abstract_processor extends process_base {
             $response = json_decode($result->get('body')->getContents(), true);
             return $this->handle_api_success($response);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            $this->log_exception($e, 'Model invocation');
             return [
                 'success' => false,
                 'errorcode' => $e->getCode() ?: 500,
-                'errormessage' => $e->getMessage(),
+                'errormessage' => get_string('error:unknownerror', 'aiprovider_bedrock'),
             ];
         }
+    }
+
+    /**
+     * Write safe exception diagnostics to the PHP error log.
+     *
+     * Exception messages and response bodies are deliberately excluded because they may contain
+     * prompts, generated content, or other sensitive data.
+     *
+     * @param \Throwable $exception The exception to log.
+     * @param string $operation The operation that failed.
+     */
+    protected function log_exception(\Throwable $exception, string $operation): void {
+        $diagnostics = [
+            'exception' => get_class($exception),
+            'code' => (string) $exception->getCode(),
+        ];
+
+        if ($exception instanceof AwsException) {
+            $awsdiagnostics = [
+                'aws_error_code' => $exception->getAwsErrorCode(),
+                'aws_request_id' => $exception->getAwsRequestId(),
+                'http_status' => $exception->getStatusCode(),
+            ];
+
+            foreach ($awsdiagnostics as $key => $value) {
+                if ($value !== null && $value !== '') {
+                    $diagnostics[$key] = preg_replace('/[^a-zA-Z0-9_-]/', '', (string) $value);
+                }
+            }
+        }
+
+        error_log('aiprovider_bedrock: ' . $operation . ' failed: ' . json_encode($diagnostics));
     }
 
     /**
@@ -164,10 +197,14 @@ abstract class abstract_processor extends process_base {
      * @return array The error response.
      */
     protected function handle_api_error(array $errorinfo): array {
+        $errorcode = $errorinfo['code'] ?? 500;
+        $logcode = is_scalar($errorcode) ? preg_replace('/[^a-zA-Z0-9_-]/', '', (string) $errorcode) : 'unknown';
+        error_log('aiprovider_bedrock: API returned an error response (code ' . $logcode . ').');
+
         return [
             'success' => false,
-            'errorcode' => $errorinfo['code'] ?? 500,
-            'errormessage' => $errorinfo['message'] ?? get_string('error:unknownerror', 'aiprovider_bedrock'),
+            'errorcode' => $errorcode,
+            'errormessage' => get_string('error:unknownerror', 'aiprovider_bedrock'),
         ];
     }
 }
